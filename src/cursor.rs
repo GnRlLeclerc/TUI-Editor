@@ -32,7 +32,18 @@ impl Cursor {
         let index = self.cursor_char_index(rope);
         if index > 0 {
             rope.remove(index - 1..index);
-            self.move_left(rope);
+            // Not just self.move_left, because if we delete a newline,
+            // we want to move to the end of the previous line BEFORE the current line
+            // gets appended to it because of this deletion.
+            if self.x > 0 {
+                self.x -= 1;
+                self.preferred_x = self.x;
+            } else if self.y > 0 {
+                self.y -= 1;
+                let start = rope.line_to_char(self.y);
+                self.x = index - start - 1;
+                self.preferred_x = self.x;
+            }
         }
     }
 
