@@ -33,7 +33,7 @@ mod cursor;
 pub struct App {
     cursor: Cursor,
     rope: Rope,
-    scroll_y: usize,
+    scroll_y: Cell<usize>,
     exit: bool,
 }
 
@@ -76,7 +76,7 @@ impl App {
         frame.render_widget(self, frame.area());
         let mut position = self.cursor.position();
         position.x += self.x_margin() as u16;
-        position.y = position.y.saturating_sub(self.scroll_y as u16);
+        position.y = position.y.saturating_sub(self.scroll_y.get() as u16);
         frame.set_cursor_position(position);
     }
 
@@ -108,7 +108,7 @@ impl App {
                         let y = mouse_event.row as usize;
                         self.cursor.set_position(
                             x - self.x_margin(),
-                            y + self.scroll_y,
+                            y + self.scroll_y.get(),
                             &self.rope,
                         );
                     }
@@ -147,6 +147,13 @@ impl Widget for &App {
         let line_length = area.width as usize;
         let line_count = area.height as usize;
 
+        // Autoscroll at rendering time, depending on the cursor position
+        if self.cursor.y < self.scroll_y.get() {
+            self.scroll_y.set(self.cursor.y);
+        } else if self.cursor.y >= self.scroll_y.get() + line_count {
+            self.scroll_y.set(self.cursor.y - line_count + 1);
+        }
+
         let layout = Layout::horizontal([
             Constraint::Length(2),                                  // margin
             Constraint::Length(self.numbers_gutter_width() as u16), // margin
@@ -155,8 +162,9 @@ impl Widget for &App {
         ])
         .split(area);
 
+        // Render the text area
         Paragraph::new(Text::from(
-            (self.scroll_y..self.rope.len_lines().min(line_count + self.scroll_y))
+            (self.scroll_y.get()..self.rope.len_lines().min(line_count + self.scroll_y.get()))
                 .map(|line| {
                     let mut remaining = line_length;
                     let line = self.rope.line(line);
@@ -175,21 +183,24 @@ impl Widget for &App {
         ))
         .render(layout[3], buf);
 
+        // Render the gutter
         Text::from_iter(
-            (self.scroll_y..self.rope.len_lines().min(line_count + self.scroll_y)).map(|line| {
-                if line == self.cursor.y {
-                    return Line::from(Span::raw((line + 1).to_string()).cyan())
-                        .alignment(HorizontalAlignment::Right);
-                }
-                let relative = if line < self.cursor.y {
-                    self.cursor.y - line
-                } else {
-                    line - self.cursor.y
-                };
+            (self.scroll_y.get()..self.rope.len_lines().min(line_count + self.scroll_y.get())).map(
+                |line| {
+                    if line == self.cursor.y {
+                        return Line::from(Span::raw((line + 1).to_string()).cyan())
+                            .alignment(HorizontalAlignment::Right);
+                    }
+                    let relative = if line < self.cursor.y {
+                        self.cursor.y - line
+                    } else {
+                        line - self.cursor.y
+                    };
 
-                Line::from(Span::raw(relative.to_string()).dark_gray())
-                    .alignment(HorizontalAlignment::Right)
-            }),
+                    Line::from(Span::raw(relative.to_string()).dark_gray())
+                        .alignment(HorizontalAlignment::Right)
+                },
+            ),
         )
         .render(layout[1], buf);
     }
