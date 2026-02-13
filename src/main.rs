@@ -152,13 +152,18 @@ impl Widget for &App {
         Paragraph::new(Text::from(
             (0..line_count.min(self.rope.len_lines()))
                 .map(|line| {
+                    let mut remaining = line_length;
                     let line = self.rope.line(line);
-                    let line = line
-                        .slice(0..line_length.min(line.len_chars()))
-                        .as_str()
-                        .unwrap();
+                    Line::from_iter(line.chunks().map_while(|chunk| {
+                        if remaining == 0 {
+                            return None;
+                        }
 
-                    Line::from(line)
+                        let n = chunk.chars().count().min(remaining);
+                        remaining -= n;
+
+                        Some(&chunk[..n])
+                    }))
                 })
                 .collect::<Vec<_>>(),
         ))
