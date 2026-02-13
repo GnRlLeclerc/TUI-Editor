@@ -33,6 +33,7 @@ mod cursor;
 pub struct App {
     cursor: Cursor,
     rope: Rope,
+    scroll_y: usize,
     exit: bool,
 }
 
@@ -75,6 +76,7 @@ impl App {
         frame.render_widget(self, frame.area());
         let mut position = self.cursor.position();
         position.x += self.x_margin() as u16;
+        position.y = position.y.saturating_sub(self.scroll_y as u16);
         frame.set_cursor_position(position);
     }
 
@@ -104,7 +106,11 @@ impl App {
                     if button == MouseButton::Left {
                         let x = mouse_event.column as usize;
                         let y = mouse_event.row as usize;
-                        self.cursor.set_position(x - self.x_margin(), y, &self.rope);
+                        self.cursor.set_position(
+                            x - self.x_margin(),
+                            y + self.scroll_y,
+                            &self.rope,
+                        );
                     }
                 }
                 _ => {}
@@ -150,7 +156,7 @@ impl Widget for &App {
         .split(area);
 
         Paragraph::new(Text::from(
-            (0..line_count.min(self.rope.len_lines()))
+            (self.scroll_y..self.rope.len_lines().min(line_count + self.scroll_y))
                 .map(|line| {
                     let mut remaining = line_length;
                     let line = self.rope.line(line);
@@ -169,20 +175,22 @@ impl Widget for &App {
         ))
         .render(layout[3], buf);
 
-        Text::from_iter((0..line_count.min(self.rope.len_lines())).map(|line| {
-            if line == self.cursor.y {
-                return Line::from(Span::raw((line + 1).to_string()).cyan())
-                    .alignment(HorizontalAlignment::Right);
-            }
-            let relative = if line < self.cursor.y {
-                self.cursor.y - line
-            } else {
-                line - self.cursor.y
-            };
+        Text::from_iter(
+            (self.scroll_y..self.rope.len_lines().min(line_count + self.scroll_y)).map(|line| {
+                if line == self.cursor.y {
+                    return Line::from(Span::raw((line + 1).to_string()).cyan())
+                        .alignment(HorizontalAlignment::Right);
+                }
+                let relative = if line < self.cursor.y {
+                    self.cursor.y - line
+                } else {
+                    line - self.cursor.y
+                };
 
-            Line::from(Span::raw(relative.to_string()).dark_gray())
-                .alignment(HorizontalAlignment::Right)
-        }))
+                Line::from(Span::raw(relative.to_string()).dark_gray())
+                    .alignment(HorizontalAlignment::Right)
+            }),
+        )
         .render(layout[1], buf);
     }
 }
