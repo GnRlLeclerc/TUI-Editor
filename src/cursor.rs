@@ -91,8 +91,16 @@ impl Cursor {
     }
 
     /// Set the cursor position (from a click)
-    pub fn set_position(&mut self, position: Position, rope: &Rope) {
-        todo!()
+    pub fn set_position(&mut self, x: usize, y: usize, rope: &Rope) {
+        let lines = rope.len_lines();
+        if y >= lines {
+            self.y = lines - 1;
+            self.move_line_end(rope);
+        } else {
+            self.y = y;
+            self.x = x.min(self.last_valid_line_index(rope));
+            self.preferred_x = self.x;
+        }
     }
 
     // ********************************************************************* //

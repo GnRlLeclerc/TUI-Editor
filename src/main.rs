@@ -7,7 +7,10 @@ use std::{
 use clap::Parser;
 use crossterm::{
     cursor::SetCursorStyle,
-    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+        MouseButton, MouseEventKind,
+    },
     execute,
 };
 use log::LevelFilter;
@@ -51,7 +54,9 @@ fn main() {
         app.rope = Rope::from_reader(BufReader::new(File::open(file).unwrap())).unwrap();
     }
 
+    execute!(stdout(), EnableMouseCapture).unwrap();
     ratatui::run(|terminal| app.run(terminal)).unwrap();
+    execute!(stdout(), DisableMouseCapture).unwrap();
 }
 
 impl App {
@@ -83,6 +88,16 @@ impl App {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_event(key_event)
             }
+            Event::Mouse(mouse_event) => match mouse_event.kind {
+                MouseEventKind::Down(button) => {
+                    if button == MouseButton::Left {
+                        let x = mouse_event.column as usize;
+                        let y = mouse_event.row as usize;
+                        self.cursor.set_position(x, y, &self.rope);
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         };
         Ok(())
