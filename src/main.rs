@@ -1,4 +1,5 @@
 use std::{
+    cell::Cell,
     fs::File,
     io::{BufReader, stdout},
     path::PathBuf,
@@ -33,7 +34,10 @@ mod cursor;
 pub struct App {
     cursor: Cursor,
     rope: Rope,
+    screen_y: Cell<usize>,
     scroll_y: Cell<usize>,
+    cursor_margin_y: usize,
+    scroll_tick: usize,
     exit: bool,
 }
 
@@ -51,6 +55,8 @@ fn main() {
     .unwrap();
 
     let mut app = App::default();
+    app.scroll_tick = 3;
+    app.cursor_margin_y = 5;
 
     if let Some(file) = Args::parse().file {
         app.rope = Rope::from_reader(BufReader::new(File::open(file).unwrap())).unwrap();
@@ -64,7 +70,7 @@ fn main() {
 impl App {
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
-        self.set_cursor_style(SetCursorStyle::BlinkingBar);
+        self.set_cursor_style(SetCursorStyle::SteadyBlock);
         while !self.exit {
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_events()?;
@@ -113,6 +119,27 @@ impl App {
                         );
                     }
                 }
+                MouseEventKind::ScrollUp => {
+                    self.scroll_y
+                        .set(self.scroll_y.get().saturating_sub(self.scroll_tick));
+
+                    if self.cursor.y + self.cursor_margin_y
+                        > self.scroll_y.get() + self.screen_y.get()
+                    {
+                        let n = self.cursor.y + self.cursor_margin_y
+                            - (self.scroll_y.get() + self.screen_y.get());
+                        self.cursor.move_up_n(&self.rope, n);
+                    }
+                }
+                MouseEventKind::ScrollDown => {
+                    self.scroll_y
+                        .set(self.scroll_y.get().saturating_add(self.scroll_tick));
+
+                    if self.cursor.y < self.scroll_y.get() + self.cursor_margin_y {
+                        let n = self.scroll_y.get() + self.cursor_margin_y - self.cursor.y;
+                        self.cursor.move_down_n(&self.rope, n);
+                    }
+                }
                 _ => {}
             },
             _ => {}
@@ -146,18 +173,21 @@ impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let line_length = area.width as usize;
         let line_count = area.height as usize;
+        self.screen_y.set(line_count);
 
         // Autoscroll at rendering time, depending on the cursor position
-        if self.cursor.y < self.scroll_y.get() {
-            self.scroll_y.set(self.cursor.y);
-        } else if self.cursor.y >= self.scroll_y.get() + line_count {
-            self.scroll_y.set(self.cursor.y - line_count + 1);
+        if self.cursor.y < self.scroll_y.get() + self.cursor_margin_y {
+            self.scroll_y
+                .set(self.cursor.y.saturating_sub(self.cursor_margin_y));
+        } else if self.cursor.y + self.cursor_margin_y >= self.scroll_y.get() + line_count {
+            self.scroll_y
+                .set(self.cursor.y + 1 + self.cursor_margin_y - line_count);
         }
 
         let layout = Layout::horizontal([
-            Constraint::Length(2),                                  // margin
-            Constraint::Length(self.numbers_gutter_width() as u16), // margin
-            Constraint::Length(2),                                  // margin
+            Constraint::Length(2), // margin
+            Constraint::Length(self.numbers_gutter_width() as u16),
+            Constraint::Length(2), // margin
             Constraint::Fill(1),
         ])
         .split(area);

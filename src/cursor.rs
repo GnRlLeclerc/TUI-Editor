@@ -73,6 +73,20 @@ impl Cursor {
         }
     }
 
+    pub fn move_up_n(&mut self, rope: &Rope, n: usize) {
+        if self.y > 0 {
+            self.y = self.y.saturating_sub(n);
+            self.move_to_preferred_x(rope);
+        }
+    }
+
+    pub fn move_down_n(&mut self, rope: &Rope, n: usize) {
+        if self.y < rope.len_lines() - 1 {
+            self.y = self.y.saturating_add(n).min(rope.len_lines() - 1);
+            self.move_to_preferred_x(rope);
+        }
+    }
+
     pub fn move_down(&mut self, rope: &Rope) {
         if self.y < rope.len_lines() - 1 {
             self.y += 1;
