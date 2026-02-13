@@ -17,8 +17,9 @@ use log::LevelFilter;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::Rect,
-    text::{Line, Text},
+    layout::{Constraint, HorizontalAlignment, Layout, Rect},
+    style::Stylize,
+    text::{Line, Span, Text},
     widgets::{Paragraph, Widget},
 };
 use ropey::Rope;
@@ -72,7 +73,17 @@ impl App {
 
     fn draw(&self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
-        frame.set_cursor_position(self.cursor.position());
+        let mut position = self.cursor.position();
+        position.x += self.x_margin() as u16;
+        frame.set_cursor_position(position);
+    }
+
+    fn numbers_gutter_width(&self) -> usize {
+        4.max((self.rope.len_lines() as f32).log10() as usize)
+    }
+
+    fn x_margin(&self) -> usize {
+        2 + self.numbers_gutter_width() + 2
     }
 
     fn set_cursor_style(&self, style: SetCursorStyle) {
@@ -93,7 +104,7 @@ impl App {
                     if button == MouseButton::Left {
                         let x = mouse_event.column as usize;
                         let y = mouse_event.row as usize;
-                        self.cursor.set_position(x, y, &self.rope);
+                        self.cursor.set_position(x - self.x_margin(), y, &self.rope);
                     }
                 }
                 _ => {}
@@ -130,6 +141,14 @@ impl Widget for &App {
         let line_length = area.width as usize;
         let line_count = area.height as usize;
 
+        let layout = Layout::horizontal([
+            Constraint::Length(2),                                  // margin
+            Constraint::Length(self.numbers_gutter_width() as u16), // margin
+            Constraint::Length(2),                                  // margin
+            Constraint::Fill(1),
+        ])
+        .split(area);
+
         Paragraph::new(Text::from(
             (0..line_count.min(self.rope.len_lines()))
                 .map(|line| {
@@ -143,6 +162,22 @@ impl Widget for &App {
                 })
                 .collect::<Vec<_>>(),
         ))
-        .render(area, buf);
+        .render(layout[3], buf);
+
+        Text::from_iter((0..line_count.min(self.rope.len_lines())).map(|line| {
+            if line == self.cursor.y {
+                return Line::from(Span::raw((line + 1).to_string()).cyan())
+                    .alignment(HorizontalAlignment::Right);
+            }
+            let relative = if line < self.cursor.y {
+                self.cursor.y - line
+            } else {
+                line - self.cursor.y
+            };
+
+            Line::from(Span::raw(relative.to_string()).dark_gray())
+                .alignment(HorizontalAlignment::Right)
+        }))
+        .render(layout[1], buf);
     }
 }
