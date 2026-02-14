@@ -1,4 +1,4 @@
-use std::{cell::Cell, fs::File, io::stdout, path::PathBuf, str::FromStr};
+use std::{cell::Cell, fs::File, io::stdout, path::PathBuf};
 
 use clap::Parser;
 use crossterm::{
@@ -10,23 +10,24 @@ use crossterm::{
     execute,
 };
 use devicons::FileIcon;
-use hex_color::HexColor;
 use log::LevelFilter;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Constraint, HorizontalAlignment, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::Stylize,
     text::{Line, Span, Text},
     widgets::{Paragraph, Widget},
 };
 use ropey::Rope;
 use simplelog::{Config, WriteLogger};
 
-use crate::{cmdline::Cmdline, cursor::Cursor};
+use crate::{cmdline::Cmdline, cursor::Cursor, lualine::Lualine};
 
 mod cmdline;
 mod cursor;
+mod lualine;
+mod utils;
 
 /// Editor mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -45,6 +46,7 @@ pub struct App {
     exit: bool,
     mode: Mode,
     cmdline: Cmdline,
+    lualine: Lualine,
 
     // Per editor buffer state
     cursor: Cursor,
@@ -204,6 +206,18 @@ impl App {
             KeyCode::Char('0') => self.cursor.move_line_start(&self.rope),
             KeyCode::Char('$') => self.cursor.move_line_end(&self.rope),
             KeyCode::Char('v') => self.set_mode(Mode::Visual),
+            KeyCode::Char('a') => {
+                self.cursor.move_right(&self.rope);
+                self.set_mode(Mode::Insert);
+            }
+            KeyCode::Char('A') => {
+                self.cursor.move_line_end(&self.rope);
+                self.set_mode(Mode::Insert);
+            }
+            KeyCode::Char('I') => {
+                self.cursor.move_line_start(&self.rope);
+                self.set_mode(Mode::Insert);
+            }
             KeyCode::Char(':') => self.cmdline.open(),
             _ => {}
         }
@@ -316,31 +330,8 @@ impl Widget for &App {
         )
         .render(layout[1], buf);
 
-        fn make_mode<'a>(text: &'a str, color: Color, icon: &'a Option<FileIcon>) -> Line<'a> {
-            let mut spans = vec![
-                Span::styled(text, Style::default().black().bg(color).bold()),
-                Span::styled("", Style::default().on_black().fg(color)),
-            ];
-
-            if let Some(icon) = icon {
-                let from_hex = HexColor::from_str(icon.color).unwrap();
-                let color = Color::Rgb(from_hex.r, from_hex.g, from_hex.b);
-                spans.push(Span::styled(
-                    format!(" {} ", icon.icon),
-                    Style::default().fg(color),
-                ));
-            }
-
-            Line::from_iter(spans)
-        }
-
         // Render the lualine
-        match self.mode {
-            Mode::Normal => make_mode(" NORMAL ", Color::Green, &self.icon),
-            Mode::Insert => make_mode(" INSERT ", Color::Blue, &self.icon),
-            Mode::Visual => make_mode(" VISUAL ", Color::Yellow, &self.icon),
-        }
-        .render(lualine, buf);
+        self.lualine.render(lualine, buf, self);
 
         // Render the cmdline if open
         self.cmdline.render(area, buf);
