@@ -15,10 +15,10 @@ use log::LevelFilter;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{Constraint, HorizontalAlignment, Layout, Rect},
+    layout::{Constraint, Flex, HorizontalAlignment, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Paragraph, Widget},
+    widgets::{Block, BorderType, Clear, Paragraph, Widget},
 };
 use ropey::Rope;
 use simplelog::{Config, WriteLogger};
@@ -43,6 +43,7 @@ pub struct App {
     scroll_tick: usize,
     exit: bool,
     mode: Mode,
+    cmd_open: bool,
 
     // Per editor buffer state
     cursor: Cursor,
@@ -191,6 +192,8 @@ impl App {
             KeyCode::Char('0') => self.cursor.move_line_start(&self.rope),
             KeyCode::Char('$') => self.cursor.move_line_end(&self.rope),
             KeyCode::Char('v') => self.set_mode(Mode::Visual),
+            KeyCode::Char(':') => self.cmd_open = true,
+            KeyCode::Esc => self.cmd_open = false,
             _ => {}
         }
     }
@@ -246,11 +249,11 @@ impl Widget for &App {
                 .set(self.cursor.y + 1 + self.cursor_margin_y - line_count);
         }
 
-        let main_layout = Layout::vertical([
+        let [main, lualine] = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(1), // lualine
         ])
-        .split(area);
+        .areas(area);
 
         let layout = Layout::horizontal([
             Constraint::Length(2), // margin
@@ -258,7 +261,7 @@ impl Widget for &App {
             Constraint::Length(2), // margin
             Constraint::Fill(1),
         ])
-        .split(main_layout[0]);
+        .split(main);
 
         // Render the text area
         Paragraph::new(Text::from(
@@ -326,6 +329,31 @@ impl Widget for &App {
             Mode::Insert => make_mode(" INSERT ", Color::Blue, &self.icon),
             Mode::Visual => make_mode(" VISUAL ", Color::Yellow, &self.icon),
         }
-        .render(main_layout[1], buf);
+        .render(lualine, buf);
+
+        if self.cmd_open {
+            let [middle_line] = Layout::vertical([Constraint::Length(3)])
+                .flex(Flex::Center)
+                .areas(area);
+
+            let [middle] = Layout::horizontal([Constraint::Length(60)])
+                .flex(Flex::Center)
+                .areas(middle_line);
+
+            Clear::default().render(middle, buf);
+
+            Paragraph::new(Text::from(Line::from(vec![
+                Span::styled(" > ", Style::default().bold().blue()),
+                Span::raw("Hello world"),
+            ])))
+            .block(
+                Block::bordered()
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().magenta())
+                    .title_alignment(HorizontalAlignment::Center)
+                    .title(" Cmdline "),
+            )
+            .render(middle, buf);
+        }
     }
 }
