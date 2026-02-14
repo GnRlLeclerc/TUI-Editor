@@ -30,15 +30,28 @@ use crate::cursor::Cursor;
 
 mod cursor;
 
+/// Editor mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    #[default]
+    Normal,
+    Insert,
+    Visual,
+}
+
 #[derive(Debug, Default)]
 pub struct App {
+    // Global app settings
+    cursor_margin_y: usize,
+    scroll_tick: usize,
+    exit: bool,
+    mode: Mode,
+
+    // Per editor buffer state
     cursor: Cursor,
     rope: Rope,
     screen_y: Cell<usize>,
     scroll_y: Cell<usize>,
-    cursor_margin_y: usize,
-    scroll_tick: usize,
-    exit: bool,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -148,8 +161,56 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
+        if key_event.code == KeyCode::Tab {
+            self.exit();
+        }
+
+        match self.mode {
+            Mode::Insert => self.handle_insert_mode_key_event(key_event),
+            Mode::Normal => self.handle_normal_mode_key_event(key_event),
+            Mode::Visual => self.handle_visual_mode_key_event(key_event),
+        }
+    }
+
+    fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        match mode {
+            Mode::Insert => self.set_cursor_style(SetCursorStyle::SteadyBar),
+            Mode::Normal | Mode::Visual => self.set_cursor_style(SetCursorStyle::SteadyBlock),
+        }
+    }
+
+    fn handle_normal_mode_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Esc => self.exit(),
+            KeyCode::Char('i') => self.set_mode(Mode::Insert),
+            KeyCode::Char('h') => self.cursor.move_left(&self.rope),
+            KeyCode::Char('j') => self.cursor.move_down(&self.rope),
+            KeyCode::Char('k') => self.cursor.move_up(&self.rope),
+            KeyCode::Char('l') => self.cursor.move_right(&self.rope),
+            KeyCode::Char('0') => self.cursor.move_line_start(&self.rope),
+            KeyCode::Char('$') => self.cursor.move_line_end(&self.rope),
+            KeyCode::Char('v') => self.set_mode(Mode::Visual),
+            _ => {}
+        }
+    }
+
+    fn handle_visual_mode_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Esc => self.set_mode(Mode::Normal),
+            KeyCode::Char('i') => self.set_mode(Mode::Insert),
+            KeyCode::Char('h') => self.cursor.move_left(&self.rope),
+            KeyCode::Char('j') => self.cursor.move_down(&self.rope),
+            KeyCode::Char('k') => self.cursor.move_up(&self.rope),
+            KeyCode::Char('l') => self.cursor.move_right(&self.rope),
+            KeyCode::Char('0') => self.cursor.move_line_start(&self.rope),
+            KeyCode::Char('$') => self.cursor.move_line_end(&self.rope),
+            _ => {}
+        }
+    }
+
+    fn handle_insert_mode_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Esc => self.set_mode(Mode::Normal),
             KeyCode::Char(c) => self.cursor.insert_char(&mut self.rope, c),
             KeyCode::Enter => self.cursor.insert_char(&mut self.rope, '\n'),
             KeyCode::Backspace => self.cursor.delete_prev_char(&mut self.rope),
