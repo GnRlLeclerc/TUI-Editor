@@ -22,10 +22,12 @@ use ratatui::{
 use ropey::Rope;
 use simplelog::{Config, WriteLogger};
 
-use crate::{cmdline::Cmdline, cursor::Cursor, lualine::Lualine};
+use crate::{border::render_vertical_border, cmdline::Cmdline, cursor::Cursor, lualine::Lualine};
 
+mod border;
 mod cmdline;
 mod cursor;
+mod filetree;
 mod lualine;
 mod utils;
 
@@ -47,6 +49,8 @@ pub struct App {
     mode: Mode,
     cmdline: Cmdline,
     lualine: Lualine,
+    filetree_width: usize,
+    filetree_open: bool,
 
     // Per editor buffer state
     cursor: Cursor,
@@ -72,6 +76,7 @@ fn main() {
     let mut app = App::default();
     app.scroll_tick = 3;
     app.cursor_margin_y = 5;
+    app.filetree_width = 25;
 
     if let Some(file) = Args::parse().file {
         let icon = FileIcon::from(&file);
@@ -106,7 +111,7 @@ impl App {
 
         // Draw active buffer cursor
         let mut position = self.cursor.position();
-        position.x += self.x_margin() as u16;
+        position.x += self.x_margin() as u16 + self.filetree_offset() as u16;
         position.y = position.y.saturating_sub(self.scroll_y.get() as u16);
         frame.set_cursor_position(position);
     }
@@ -124,6 +129,13 @@ impl App {
             log::error!("Failed to set cursor style: {}", e);
         }
     }
+    fn filetree_offset(&self) -> usize {
+        if self.filetree_open {
+            self.filetree_width + 1
+        } else {
+            0
+        }
+    }
 
     fn handle_events(&mut self) -> std::io::Result<()> {
         match event::read()? {
@@ -138,7 +150,7 @@ impl App {
                         let x = mouse_event.column as usize;
                         let y = mouse_event.row as usize;
                         self.cursor.set_position(
-                            x - self.x_margin(),
+                            x - self.x_margin() - self.filetree_offset(),
                             y + self.scroll_y.get(),
                             &self.rope,
                         );
@@ -198,6 +210,7 @@ impl App {
 
     fn handle_normal_mode_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
+            KeyCode::Char('f') => self.filetree_open = !self.filetree_open,
             KeyCode::Char('i') => self.set_mode(Mode::Insert),
             KeyCode::Char('h') => self.cursor.move_left(&self.rope),
             KeyCode::Char('j') => self.cursor.move_down(&self.rope),
@@ -280,13 +293,23 @@ impl Widget for &App {
         ])
         .areas(area);
 
-        let layout = Layout::horizontal([
-            Constraint::Length(2), // margin
+        let [filetree, border, _, gutter, _, buffer] = Layout::horizontal([
+            Constraint::Length(if self.filetree_open {
+                self.filetree_width as u16
+            } else {
+                0
+            }), // file tree
+            Constraint::Length(if self.filetree_open { 1 } else { 0 }), // file tree border
+            Constraint::Length(2),                                      // margin
             Constraint::Length(self.numbers_gutter_width() as u16),
             Constraint::Length(2), // margin
             Constraint::Fill(1),
         ])
-        .split(main);
+        .areas(main);
+
+        if self.filetree_open {
+            render_vertical_border(border, buf);
+        }
 
         // Render the text area
         Paragraph::new(Text::from(
@@ -307,7 +330,7 @@ impl Widget for &App {
                 })
                 .collect::<Vec<_>>(),
         ))
-        .render(layout[3], buf);
+        .render(buffer, buf);
 
         // Render the gutter
         Text::from_iter(
@@ -328,7 +351,7 @@ impl Widget for &App {
                 },
             ),
         )
-        .render(layout[1], buf);
+        .render(gutter, buf);
 
         // Render the lualine
         self.lualine.render(lualine, buf, self);
