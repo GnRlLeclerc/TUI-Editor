@@ -15,16 +15,17 @@ use log::LevelFilter;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{Constraint, Flex, HorizontalAlignment, Layout, Rect},
+    layout::{Constraint, HorizontalAlignment, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Clear, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 use ropey::Rope;
 use simplelog::{Config, WriteLogger};
 
-use crate::cursor::Cursor;
+use crate::{cmdline::Cmdline, cursor::Cursor};
 
+mod cmdline;
 mod cursor;
 
 /// Editor mode
@@ -43,7 +44,7 @@ pub struct App {
     scroll_tick: usize,
     exit: bool,
     mode: Mode,
-    cmd_open: bool,
+    cmdline: Cmdline,
 
     // Per editor buffer state
     cursor: Cursor,
@@ -95,6 +96,13 @@ impl App {
 
     fn draw(&self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
+
+        // Draw cmdline cursor
+        if self.cmdline.draw_cursor(frame) {
+            return;
+        }
+
+        // Draw active buffer cursor
         let mut position = self.cursor.position();
         position.x += self.x_margin() as u16;
         position.y = position.y.saturating_sub(self.scroll_y.get() as u16);
@@ -167,6 +175,10 @@ impl App {
             self.exit();
         }
 
+        if self.cmdline.handle_key_event(key_event) {
+            return;
+        }
+
         match self.mode {
             Mode::Insert => self.handle_insert_mode_key_event(key_event),
             Mode::Normal => self.handle_normal_mode_key_event(key_event),
@@ -192,8 +204,7 @@ impl App {
             KeyCode::Char('0') => self.cursor.move_line_start(&self.rope),
             KeyCode::Char('$') => self.cursor.move_line_end(&self.rope),
             KeyCode::Char('v') => self.set_mode(Mode::Visual),
-            KeyCode::Char(':') => self.cmd_open = true,
-            KeyCode::Esc => self.cmd_open = false,
+            KeyCode::Char(':') => self.cmdline.open(),
             _ => {}
         }
     }
@@ -331,29 +342,7 @@ impl Widget for &App {
         }
         .render(lualine, buf);
 
-        if self.cmd_open {
-            let [middle_line] = Layout::vertical([Constraint::Length(3)])
-                .flex(Flex::Center)
-                .areas(area);
-
-            let [middle] = Layout::horizontal([Constraint::Length(60)])
-                .flex(Flex::Center)
-                .areas(middle_line);
-
-            Clear::default().render(middle, buf);
-
-            Paragraph::new(Text::from(Line::from(vec![
-                Span::styled(" > ", Style::default().bold().blue()),
-                Span::raw("Hello world"),
-            ])))
-            .block(
-                Block::bordered()
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().magenta())
-                    .title_alignment(HorizontalAlignment::Center)
-                    .title(" Cmdline "),
-            )
-            .render(middle, buf);
-        }
+        // Render the cmdline if open
+        self.cmdline.render(area, buf);
     }
 }
