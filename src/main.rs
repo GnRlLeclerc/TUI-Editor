@@ -1,9 +1,4 @@
-use std::{
-    cell::Cell,
-    fs::File,
-    io::{BufReader, stdout},
-    path::PathBuf,
-};
+use std::{cell::Cell, fs::File, io::stdout, path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use crossterm::{
@@ -14,6 +9,8 @@ use crossterm::{
     },
     execute,
 };
+use devicons::FileIcon;
+use hex_color::HexColor;
 use log::LevelFilter;
 use ratatui::{
     DefaultTerminal, Frame,
@@ -52,6 +49,7 @@ pub struct App {
     rope: Rope,
     screen_y: Cell<usize>,
     scroll_y: Cell<usize>,
+    icon: Option<FileIcon>,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -72,7 +70,10 @@ fn main() {
     app.cursor_margin_y = 5;
 
     if let Some(file) = Args::parse().file {
-        app.rope = Rope::from_reader(BufReader::new(File::open(file).unwrap())).unwrap();
+        let icon = FileIcon::from(&file);
+        let content = std::fs::read_to_string(&file).unwrap();
+        app.rope = Rope::from(content);
+        app.icon = Some(icon);
     }
 
     execute!(stdout(), EnableMouseCapture).unwrap();
@@ -301,18 +302,29 @@ impl Widget for &App {
         )
         .render(layout[1], buf);
 
-        fn make_mode(text: &str, color: Color) -> Line<'_> {
-            Line::from(vec![
+        fn make_mode<'a>(text: &'a str, color: Color, icon: &'a Option<FileIcon>) -> Line<'a> {
+            let mut spans = vec![
                 Span::styled(text, Style::default().black().bg(color).bold()),
                 Span::styled("", Style::default().on_black().fg(color)),
-            ])
+            ];
+
+            if let Some(icon) = icon {
+                let from_hex = HexColor::from_str(icon.color).unwrap();
+                let color = Color::Rgb(from_hex.r, from_hex.g, from_hex.b);
+                spans.push(Span::styled(
+                    format!(" {} ", icon.icon),
+                    Style::default().fg(color),
+                ));
+            }
+
+            Line::from_iter(spans)
         }
 
         // Render the lualine
         match self.mode {
-            Mode::Normal => make_mode(" NORMAL ", Color::Green),
-            Mode::Insert => make_mode(" INSERT ", Color::Blue),
-            Mode::Visual => make_mode(" VISUAL ", Color::Yellow),
+            Mode::Normal => make_mode(" NORMAL ", Color::Green, &self.icon),
+            Mode::Insert => make_mode(" INSERT ", Color::Blue, &self.icon),
+            Mode::Visual => make_mode(" VISUAL ", Color::Yellow, &self.icon),
         }
         .render(main_layout[1], buf);
     }
