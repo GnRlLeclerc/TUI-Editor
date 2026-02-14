@@ -19,7 +19,7 @@ use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Constraint, HorizontalAlignment, Layout, Rect},
-    style::Stylize,
+    style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Paragraph, Widget},
 };
@@ -245,13 +245,19 @@ impl Widget for &App {
                 .set(self.cursor.y + 1 + self.cursor_margin_y - line_count);
         }
 
+        let main_layout = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1), // lualine
+        ])
+        .split(area);
+
         let layout = Layout::horizontal([
             Constraint::Length(2), // margin
             Constraint::Length(self.numbers_gutter_width() as u16),
             Constraint::Length(2), // margin
             Constraint::Fill(1),
         ])
-        .split(area);
+        .split(main_layout[0]);
 
         // Render the text area
         Paragraph::new(Text::from(
@@ -294,5 +300,20 @@ impl Widget for &App {
             ),
         )
         .render(layout[1], buf);
+
+        fn make_mode(text: &str, color: Color) -> Line<'_> {
+            Line::from(vec![
+                Span::styled(text, Style::default().black().bg(color).bold()),
+                Span::styled("", Style::default().on_black().fg(color)),
+            ])
+        }
+
+        // Render the lualine
+        match self.mode {
+            Mode::Normal => make_mode(" NORMAL ", Color::Green),
+            Mode::Insert => make_mode(" INSERT ", Color::Blue),
+            Mode::Visual => make_mode(" VISUAL ", Color::Yellow),
+        }
+        .render(main_layout[1], buf);
     }
 }
