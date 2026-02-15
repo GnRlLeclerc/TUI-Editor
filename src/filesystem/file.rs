@@ -33,14 +33,20 @@ impl Devicon {
 #[derive(Debug)]
 pub struct File {
     pub path: PathBuf,
+    pub name: String,
     icon: Devicon,
 }
 
 impl File {
     pub fn new(path: PathBuf) -> Self {
         let icon = Devicon::new(&path);
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
 
-        Self { path, icon }
+        Self { path, name, icon }
     }
 
     /// Returns a ratatui line to display the file
@@ -48,7 +54,7 @@ impl File {
         Line::from(vec![
             Span::raw("  ".repeat(depth + 1)),
             self.icon.span(),
-            Span::raw(self.path.file_name().unwrap_or_default().to_string_lossy()),
+            Span::raw(&self.name),
         ])
     }
 }

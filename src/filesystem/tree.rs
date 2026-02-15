@@ -127,6 +127,9 @@ impl Filetree {
             }
 
             let folder = &self.folders[*folder_id];
+            if folder.hidden() {
+                continue;
+            }
             lines.push(folder.line(depth));
 
             if folder.open {
