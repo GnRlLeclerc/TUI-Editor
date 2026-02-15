@@ -111,7 +111,51 @@ impl Filetree {
             }
         });
     }
+
+    /// Recursively display files, folders and their children
+    fn recurse_lines<'a>(
+        &'a self,
+        id: FolderId,
+        lines: &mut Vec<Line<'a>>,
+        remaining: &mut usize,
+        depth: usize,
+    ) {
+        let folder = &self.folders[id];
+        for folder_id in &folder.child_folders {
+            if *remaining == 0 {
+                return;
+            }
+
+            let folder = &self.folders[*folder_id];
+            lines.push(folder.line(depth));
+
+            if folder.open {
+                self.recurse_lines(*folder_id, lines, remaining, depth + 1);
+            }
+
+            *remaining = remaining.saturating_sub(1);
+        }
+
+        for file_id in &folder.child_files {
+            if *remaining == 0 {
+                return;
+            }
+
+            let file = &self.files[*file_id];
+            lines.push(file.line(depth));
+            *remaining = remaining.saturating_sub(1);
+        }
+    }
 }
+
+impl Widget for &Filetree {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let mut lines = vec![];
+        let mut remaining = area.height as usize;
+        self.recurse_lines(self.root, &mut lines, &mut remaining, 0);
+
+        Text::from(lines).render(area, buf);
+    }
 }
 
 fn compare_names(a: &Path, b: &Path) -> Ordering {

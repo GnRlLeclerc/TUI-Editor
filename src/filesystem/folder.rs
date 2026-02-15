@@ -1,6 +1,8 @@
 use super::{FileId, FolderId};
 use std::path::PathBuf;
 
+use ratatui::prelude::*;
+
 #[derive(Debug)]
 pub struct Folder {
     pub path: PathBuf,
@@ -23,5 +25,15 @@ impl Folder {
             open: false,
             init: false,
         }
+    }
+
+    /// Returns a ratatui line to display the folder
+    pub fn line(&self, depth: usize) -> Line<'_> {
+        Line::from(vec![
+            Span::raw("  ".repeat(depth)),
+            Span::raw(if self.open { " " } else { " " }).gray(),
+            Span::raw(if self.open { " " } else { " " }).blue(),
+            Span::raw(self.path.file_name().unwrap_or_default().to_string_lossy()).blue(),
+        ])
     }
 }

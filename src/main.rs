@@ -417,6 +417,11 @@ impl Widget for &App {
         )
         .render(gutter, buf);
 
+        // Render the file tree (if open)
+        if self.filetree.open {
+            self.filetree.render(filetree, buf);
+        }
+
         // Render the lualine
         self.lualine.render(lualine, buf, self);
 
