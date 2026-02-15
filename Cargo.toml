@@ -5,13 +5,16 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.58", features = ["derive"] }
-crossterm = "0.29.0"
+crossterm = { version = "0.29.0", features = ["event-stream"] }
 devicons = "0.6.12"
+futures = "0.3.31"
 hex_color = "3.0.0"
 log = "0.4.29"
 ratatui = "0.30.0"
 ropey = "1.6.1"
 simplelog = "0.12.2"
+slotmap = "1.1.1"
+tokio = { version = "1", features = ["full"] }
 
 [profile.release]
 codegen-units = 1

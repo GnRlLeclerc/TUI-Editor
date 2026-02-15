@@ -4,12 +4,13 @@ use clap::Parser;
 use crossterm::{
     cursor::SetCursorStyle,
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-        MouseButton, MouseEventKind,
+        DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEvent,
+        KeyEventKind, MouseButton, MouseEventKind,
     },
     execute,
 };
 use devicons::FileIcon;
+use futures::{StreamExt, stream::Fuse};
 use log::LevelFilter;
 use ratatui::{
     DefaultTerminal, Frame,
@@ -21,13 +22,17 @@ use ratatui::{
 };
 use ropey::Rope;
 use simplelog::{Config, WriteLogger};
+use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::{border::render_vertical_border, cmdline::Cmdline, cursor::Cursor, lualine::Lualine};
+use crate::{
+    border::render_vertical_border, cmdline::Cmdline, cursor::Cursor, filesystem::Filetree,
+    lualine::Lualine,
+};
 
 mod border;
 mod cmdline;
 mod cursor;
-mod filetree;
+mod filesystem;
 mod lualine;
 mod utils;
 
@@ -40,7 +45,18 @@ pub enum Mode {
     Visual,
 }
 
-#[derive(Debug, Default)]
+/// Internal editor events,
+/// for background running tasks to make their
+/// results available to the main thread.
+pub enum EditorEvent {
+    FolderLoaded {
+        id: filesystem::FolderId,
+        files: Vec<filesystem::File>,
+        folders: Vec<filesystem::Folder>,
+    },
+}
+
+#[derive(Debug)]
 pub struct App {
     // Global app settings
     cursor_margin_y: usize,
@@ -49,8 +65,12 @@ pub struct App {
     mode: Mode,
     cmdline: Cmdline,
     lualine: Lualine,
-    filetree_width: usize,
-    filetree_open: bool,
+    filetree: Filetree,
+
+    // Event channels
+    term_events: Fuse<EventStream>,
+    editor_events: Receiver<EditorEvent>,
+    editor_sender: Sender<EditorEvent>,
 
     // Per editor buffer state
     cursor: Cursor,
@@ -60,12 +80,37 @@ pub struct App {
     icon: Option<FileIcon>,
 }
 
+impl App {
+    pub fn new() -> Self {
+        let (sender, receiver) = tokio::sync::mpsc::channel(64);
+
+        Self {
+            cursor_margin_y: 5,
+            scroll_tick: 3,
+            exit: false,
+            mode: Mode::Normal,
+            cmdline: Cmdline::default(),
+            lualine: Lualine::default(),
+            filetree: Filetree::new(sender.clone()),
+            term_events: EventStream::new().fuse(),
+            editor_events: receiver,
+            editor_sender: sender,
+            cursor: Cursor::default(),
+            rope: Rope::default(),
+            screen_y: Cell::new(0),
+            scroll_y: Cell::new(0),
+            icon: None,
+        }
+    }
+}
+
 #[derive(Debug, clap::Parser)]
 struct Args {
     file: Option<PathBuf>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
     WriteLogger::init(
         LevelFilter::Debug,
         Config::default(),
@@ -73,10 +118,8 @@ fn main() {
     )
     .unwrap();
 
-    let mut app = App::default();
-    app.scroll_tick = 3;
-    app.cursor_margin_y = 5;
-    app.filetree_width = 25;
+    let mut app = App::new();
+    app.filetree.load_root();
 
     if let Some(file) = Args::parse().file {
         let icon = FileIcon::from(&file);
@@ -86,19 +129,33 @@ fn main() {
     }
 
     execute!(stdout(), EnableMouseCapture).unwrap();
-    ratatui::run(|terminal| app.run(terminal)).unwrap();
+    let terminal = ratatui::init();
+    let result = app.run(terminal).await;
+    ratatui::restore();
     execute!(stdout(), DisableMouseCapture).unwrap();
+    result
 }
 
 impl App {
     /// runs the application's main loop until the user quits
-    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+    pub async fn run(&mut self, mut terminal: DefaultTerminal) -> std::io::Result<()> {
         self.set_cursor_style(SetCursorStyle::SteadyBlock);
         while !self.exit {
             terminal.draw(|frame| self.draw(frame))?;
-            self.handle_events()?;
+            self.handle_events().await;
         }
         Ok(())
+    }
+
+    pub async fn handle_events(&mut self) {
+        tokio::select! {
+            Some(Ok(event)) = self.term_events.next() => {
+                self.handle_term_event(event);
+            }
+            Some(event) = self.editor_events.recv() => {
+                self.handle_editor_event(event).await;
+            }
+        }
     }
 
     fn draw(&self, frame: &mut Frame) {
@@ -130,15 +187,23 @@ impl App {
         }
     }
     fn filetree_offset(&self) -> usize {
-        if self.filetree_open {
-            self.filetree_width + 1
+        if self.filetree.open {
+            self.filetree.width + 1
         } else {
             0
         }
     }
 
-    fn handle_events(&mut self) -> std::io::Result<()> {
-        match event::read()? {
+    async fn handle_editor_event(&mut self, event: EditorEvent) {
+        match event {
+            EditorEvent::FolderLoaded { id, files, folders } => {
+                self.filetree.init_folder(id, files, folders);
+            }
+        }
+    }
+
+    fn handle_term_event(&mut self, event: Event) {
+        match event {
             // it's important to check that the event is a key press event as
             // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
@@ -181,7 +246,6 @@ impl App {
             },
             _ => {}
         };
-        Ok(())
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
@@ -210,7 +274,7 @@ impl App {
 
     fn handle_normal_mode_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Char('f') => self.filetree_open = !self.filetree_open,
+            KeyCode::Char('f') => self.filetree.open = !self.filetree.open,
             KeyCode::Char('i') => self.set_mode(Mode::Insert),
             KeyCode::Char('h') => self.cursor.move_left(&self.rope),
             KeyCode::Char('j') => self.cursor.move_down(&self.rope),
@@ -294,12 +358,12 @@ impl Widget for &App {
         .areas(area);
 
         let [filetree, border, _, gutter, _, buffer] = Layout::horizontal([
-            Constraint::Length(if self.filetree_open {
-                self.filetree_width as u16
+            Constraint::Length(if self.filetree.open {
+                self.filetree.width as u16
             } else {
                 0
             }), // file tree
-            Constraint::Length(if self.filetree_open { 1 } else { 0 }), // file tree border
+            Constraint::Length(if self.filetree.open { 1 } else { 0 }), // file tree border
             Constraint::Length(2),                                      // margin
             Constraint::Length(self.numbers_gutter_width() as u16),
             Constraint::Length(2), // margin
@@ -307,7 +371,7 @@ impl Widget for &App {
         ])
         .areas(main);
 
-        if self.filetree_open {
+        if self.filetree.open {
             render_vertical_border(border, buf);
         }
 
