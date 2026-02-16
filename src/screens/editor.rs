@@ -7,6 +7,7 @@ use crate::{
 };
 
 /// The file editor screen, with a filetree
+#[derive(Debug)]
 pub struct EditorScreen {
     filetree: FileTree,
     tree_open: bool,

@@ -1,9 +1,10 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
+use ropey::Rope;
 use slotmap::{SlotMap, new_key_type};
 
 mod file;
@@ -27,6 +28,8 @@ pub struct FileSystem {
     pub root: FolderId,
     pub folders: SlotMap<FolderId, Folder>,
     pub files: SlotMap<FileId, File>,
+    /// Shortcut to know which files currently contain open buffers.
+    pub open_buffers: HashSet<FileId>,
     /// Opened files that are outside the filetree.
     /// or whose filetree has not yet been loaded
     pub file_paths: HashMap<PathBuf, FileId>,
@@ -47,6 +50,7 @@ impl FileSystem {
             root,
             folders,
             files: SlotMap::with_key(),
+            open_buffers: HashSet::new(),
             file_paths: HashMap::new(),
             folder_paths: HashMap::new(),
         }

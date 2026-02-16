@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
+pub use config::Config;
 pub use events::{EditorEvent, Events};
 pub use filesystem::{File, FileId, FileSystem, Folder, FolderId};
 
+mod config;
 mod events;
 mod filesystem;
 
@@ -33,6 +35,7 @@ pub struct State {
     pub mode: Mode,
     pub events: Events,
     pub filesystem: FileSystem,
+    pub config: Config,
 }
 
 impl State {
@@ -41,6 +44,7 @@ impl State {
         let mode = Mode::default();
         let events = Events::new();
         let filesystem = FileSystem::new(root_path);
+        let config = Config::default();
 
         // Load the root folder asynchronously
         filesystem.load_folder(events.editor_sender.clone(), filesystem.root);
@@ -50,6 +54,7 @@ impl State {
             mode,
             events,
             filesystem,
+            config,
         }
     }
 }

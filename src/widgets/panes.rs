@@ -4,6 +4,8 @@ use crate::{State, Widget};
 
 use ratatui::prelude::*;
 
+/// Group of editor panes
+#[derive(Debug)]
 pub struct Panes {
     area: Cell<Rect>,
 }

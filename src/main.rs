@@ -11,38 +11,17 @@ use crossterm::{
 };
 use futures::{StreamExt, stream::Fuse};
 use log::LevelFilter;
-use ratatui::{
-    DefaultTerminal, Frame,
-    buffer::Buffer,
-    layout::{Constraint, HorizontalAlignment, Layout, Rect},
-    style::Stylize,
-    text::{Line, Span, Text},
-    widgets::{Paragraph, Widget},
-};
+use ratatui::{DefaultTerminal, Frame};
 use simplelog::{Config, WriteLogger};
 use slotmap::SlotMap;
 use tokio::sync::mpsc::{Receiver, Sender};
-
-use crate::{
-    border::render_vertical_border,
-    buffer::{BufferId, FileBuffer, FilePane},
-    cmdline::Cmdline,
-    filesystem::Filetree,
-    lualine::Lualine,
-};
 
 pub use screens::Screen;
 pub use state::State;
 pub use widgets::Widget;
 
-mod alpha;
 mod app;
-mod border;
-mod buffer;
-mod cmdline;
 mod cursor;
-mod filesystem;
-mod lualine;
 mod screens;
 mod state;
 mod utils;

@@ -5,12 +5,14 @@ pub use border::Border;
 pub use cmdline::Cmdline;
 pub use filetree::FileTree;
 pub use lualine::Lualine;
+pub use pane::Pane;
 pub use panes::Panes;
 
 mod border;
 mod cmdline;
 mod filetree;
 mod lualine;
+mod pane;
 mod panes;
 
 /// Editor widget trait

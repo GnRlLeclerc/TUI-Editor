@@ -4,11 +4,13 @@ use crate::{State, Widget};
 
 use ratatui::prelude::*;
 
+#[derive(Debug)]
 enum Orientation {
     Horizontal,
     Vertical,
 }
 
+#[derive(Debug)]
 pub struct Border {
     area: Cell<Rect>,
     orientation: Orientation,

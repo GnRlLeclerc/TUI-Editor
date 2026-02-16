@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use devicons::FileIcon;
 use hex_color::HexColor;
 use ratatui::prelude::*;
+use ropey::Rope;
 
 #[derive(Debug)]
 struct Devicon {
@@ -34,6 +35,7 @@ impl Devicon {
 pub struct File {
     pub path: PathBuf,
     pub name: String,
+    pub buffer: Option<Rope>,
     icon: Devicon,
 }
 
@@ -46,7 +48,12 @@ impl File {
             .to_string_lossy()
             .to_string();
 
-        Self { path, name, icon }
+        Self {
+            path,
+            name,
+            icon,
+            buffer: None,
+        }
     }
 
     /// Returns a ratatui line to display the file

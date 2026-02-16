@@ -6,6 +6,7 @@ use crate::{
 };
 use ratatui::{prelude::*, widgets::Widget as RatatuiWidget};
 
+#[derive(Debug)]
 pub struct FileTree {
     area: Cell<Rect>,
 }
