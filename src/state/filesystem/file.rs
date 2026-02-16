@@ -5,7 +5,7 @@ use hex_color::HexColor;
 use ratatui::prelude::*;
 
 #[derive(Debug)]
-pub struct Devicon {
+struct Devicon {
     text: String,
     style: Style,
 }

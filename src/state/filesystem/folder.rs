@@ -1,7 +1,8 @@
-use super::{FileId, FolderId};
 use std::path::PathBuf;
 
 use ratatui::prelude::*;
+
+use super::{FileId, FolderId};
 
 #[derive(Debug)]
 pub struct Folder {
@@ -36,7 +37,8 @@ impl Folder {
 
     pub fn hidden(&self) -> bool {
         match &self.name as &str {
-            ".git" => true,
+            // TODO: have a way to config this ?
+            ".git" | ".venv" | "__pycache__" => true,
             _ => false,
         }
     }

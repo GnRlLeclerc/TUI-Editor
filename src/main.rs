@@ -1,4 +1,4 @@
-use std::{cell::Cell, fs::File, io::stdout, path::PathBuf};
+use std::{cell::Cell, collections::HashMap, fs::File, io::stdout, path::PathBuf};
 
 use clap::Parser;
 use crossterm::{
@@ -9,7 +9,6 @@ use crossterm::{
     },
     execute,
 };
-use devicons::FileIcon;
 use futures::{StreamExt, stream::Fuse};
 use log::LevelFilter;
 use ratatui::{
@@ -20,21 +19,34 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Paragraph, Widget},
 };
-use ropey::Rope;
 use simplelog::{Config, WriteLogger};
+use slotmap::SlotMap;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::{
-    border::render_vertical_border, cmdline::Cmdline, cursor::Cursor, filesystem::Filetree,
+    border::render_vertical_border,
+    buffer::{BufferId, FileBuffer, FilePane},
+    cmdline::Cmdline,
+    filesystem::Filetree,
     lualine::Lualine,
 };
 
+pub use screens::Screen;
+pub use state::State;
+pub use widgets::Widget;
+
+mod alpha;
+mod app;
 mod border;
+mod buffer;
 mod cmdline;
 mod cursor;
 mod filesystem;
 mod lualine;
+mod screens;
+mod state;
 mod utils;
+mod widgets;
 
 /// Editor mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -62,10 +74,13 @@ pub struct App {
     cursor_margin_y: usize,
     scroll_tick: usize,
     exit: bool,
-    mode: Mode,
-    cmdline: Cmdline,
+    pub mode: Mode,
+    pub alpha: Alpha,
+    pub cmdline: Cmdline,
     lualine: Lualine,
     filetree: Filetree,
+    buffers: SlotMap<BufferId, FileBuffer>,
+    panes: Vec<FilePane>,
 
     // Event channels
     term_events: Fuse<EventStream>,
@@ -77,7 +92,6 @@ pub struct App {
     rope: Rope,
     screen_y: Cell<usize>,
     scroll_y: Cell<usize>,
-    icon: Option<FileIcon>,
 }
 
 impl App {
@@ -89,17 +103,19 @@ impl App {
             scroll_tick: 3,
             exit: false,
             mode: Mode::Normal,
+            alpha: Alpha::new(),
             cmdline: Cmdline::default(),
             lualine: Lualine::default(),
             filetree: Filetree::new(sender.clone()),
+            buffers: SlotMap::with_key(),
+            buffers_by_paths: HashMap::new(),
+            panes: vec![],
+
             term_events: EventStream::new().fuse(),
             editor_events: receiver,
             editor_sender: sender,
-            cursor: Cursor::default(),
-            rope: Rope::default(),
             screen_y: Cell::new(0),
             scroll_y: Cell::new(0),
-            icon: None,
         }
     }
 }
@@ -122,10 +138,8 @@ async fn main() -> std::io::Result<()> {
     app.filetree.load_root();
 
     if let Some(file) = Args::parse().file {
-        let icon = FileIcon::from(&file);
         let content = std::fs::read_to_string(&file).unwrap();
         app.rope = Rope::from(content);
-        app.icon = Some(icon);
     }
 
     execute!(stdout(), EnableMouseCapture).unwrap();
@@ -417,10 +431,8 @@ impl Widget for &App {
         )
         .render(gutter, buf);
 
-        // Render the file tree (if open)
-        if self.filetree.open {
-            self.filetree.render(filetree, buf);
-        }
+        // Render the file tree
+        self.filetree.render(filetree, buf);
 
         // Render the lualine
         self.lualine.render(lualine, buf, self);
