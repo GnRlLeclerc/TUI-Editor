@@ -2,7 +2,8 @@ use crossterm::event::Event;
 use ratatui::prelude::*;
 
 use crate::{
-    Screen, State, Widget,
+    State, Widget,
+    screens::Screen,
     widgets::{Border, FileTree, Lualine, Panes},
 };
 

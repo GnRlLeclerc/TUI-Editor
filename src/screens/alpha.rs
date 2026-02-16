@@ -1,7 +1,7 @@
 use crossterm::event::Event;
 use ratatui::prelude::*;
 
-use crate::{Screen, State, Widget};
+use crate::{State, Widget, screens::Screen};
 
 /// alpha.nvim home page widget
 #[derive(Debug)]
